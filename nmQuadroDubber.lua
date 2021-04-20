@@ -1,5 +1,5 @@
 -- nmQuadroDubber
--- 1.0 @NightMachines
+-- 1.0.2 @NightMachines
 -- llllllll.co/t/nmquadrodubber/
 --
 -- Overdub external audio
@@ -7,15 +7,16 @@
 --
 -- K1: hold for /alt menu
 -- E1: tape speed
--- K2: record to tape
+-- K2: record to tape/
+--     random modes
 -- K3: record silence/
 --     clear tape loop
 -- E2: overdub level/
 --     fade time
--- E3: select tape loop/
+-- E3: select tape loop/s
 --     monitor mix
 
-
+-- norns.script.load("code/nmQuadroDubber/nmQuadroDubber.lua")
 
 --adjust encoder settigns to your liking
 --norns.enc.sens(0,2)
@@ -23,6 +24,10 @@ norns.enc.accel(0,false)
 
 
 -- LET'S GO!
+rndProb = 5 -- probability of change happening in random modes 0-10 (0-100%)
+
+
+
 pPos = 1 --playhead position 1-50
 tape = 1 --tape loop strips 1-4
 tapeSpeed = 1.0 --current tape speed 0.1-4.0
@@ -40,31 +45,7 @@ fadeTime = 0 -- softcut fade time parameter
 del = 0 -- 0 play, 1 delete (del/DEL on screen) 
 mon = 0.0 --monitor volume 0-1 (mon on screen)
 
-
-
--- SOFTCUT POSITION
-function update_positions(v,p) -- v = voice, p = position
-  if v==1 then -- on every voice 1 position count
-    pPos = pPos+1 
-    if pPos>50 then -- reset playheads after 50 position counts
-      softcut.position(1,0)
-      softcut.position(2,20)
-      softcut.position(3,40)
-      softcut.position(4,60)
-      pPos = 1
-    end
-
-    if state==1 then -- if RECording
-      color = util.clamp(overStr+2,0,12) -- set corrent positions color between 2-12
-      strip[tape][pPos] = color -- write color into array
-    end
-    
-    if del==1 then -- id DELeting
-      strip[tape][pPos] = 0 -- write black to array
-    end
-  end
-end
-
+rndState = 0 -- random modes: 0=off, 1=random rec, 2=random del, 3=random all
 
 
 -- INIT
@@ -117,12 +98,14 @@ function init()
 end
 
 
-
 -- BUTTONS
 function key(id,st)
   if id==2 and st==1 then -- K2
-    if k1hold==1 then -- if K1 is held
-      -- ... nothing happens
+    if k1hold==1 then -- if K1 is held, K2 switches through random modes
+      rndState = rndState+1
+      if rndState>3 then
+        rndState=0
+      end
 
       else -- if K1 is not held, de/activate RECording
       if state==1 then 
@@ -170,7 +153,6 @@ function key(id,st)
 end
 
 
-
 -- ENCODERS
 function enc(id,delta)
   if id==3 then -- E3
@@ -215,6 +197,46 @@ function enc(id,delta)
 end
 
 
+-- SOFTCUT POSITION POLL AND EVENT TRIGGER
+function update_positions(v,p) -- v = voice, p = position
+  if v==1 then -- on every voice 1 position count
+    pPos = pPos+1 
+    if pPos>50 then -- reset playheads after 50 position counts
+      softcut.position(1,0)
+      softcut.position(2,20)
+      softcut.position(3,40)
+      softcut.position(4,60)
+      pPos = 1
+    end
+
+    if state==1 then -- if RECording
+      color = util.clamp(overStr+2,0,12) -- set corrent positions color between 2-12
+      strip[tape][pPos] = color -- write color into array
+    end
+    
+    if del==1 then -- id DELeting
+      strip[tape][pPos] = 0 -- write black to array
+    end
+    
+    
+    if rndState==0 then -- Random rec/del off
+      --do nothing
+    elseif rndState==1 then -- random rec on
+      rndRec()
+    elseif rndState==2 then -- random del on
+      rndDel()
+    elseif rndState==3 then -- both random rec and del on
+      local x = math.random(0,10) 
+      if x<5 then -- 50/50 chance for REC or DEL switch
+        rndRec()
+      else
+        rndDel()
+      end
+    end
+        
+  end
+end
+
 
 -- RECORD + DELETE FUNCTION
 function recTape(t,s) -- t=tape, s=state
@@ -232,6 +254,41 @@ function recTape(t,s) -- t=tape, s=state
       softcut.pre_level(t,1.0) -- set overdub preserve to 1, to keep audio on tape indefinitely
     end
     softcut.rec_level(t,s*(overStr/10.0)) -- set record level according to "lvl" value
+  end
+end
+
+
+-- RANDOM RECORDING FEATURE
+function rndRec()
+  if math.random(0,10)<=rndProb then
+    if state==1 then 
+      state = 0
+      recTape(tape,state)
+    else 
+      del=0
+      state = 1
+      tape = math.random(1,4) -- randomly jump to tape loop
+      overStr = math.random(0,10)
+      softcut.pre_level(tape,((overStr-10.0)/10.0)*-1)
+      softcut.rec_level(tape,overStr/10.0)
+      recTape(tape,state)
+    end
+  end      
+end
+
+
+-- RANDOM DELETE FEATURE
+function rndDel()
+  if math.random(0,10)<=rndProb then
+    if del==0 then
+      state=0
+      del=1
+      tape = math.random(1,4)
+      recTape(tape,state)
+    else
+      del=0
+      recTape(tape,state)
+    end
   end
 end
 
@@ -260,6 +317,17 @@ function redraw()
   --draw text
   screen.level(15)
   if k1hold==1 then
+    screen.move(0,60)
+    if rndState==0 then
+      screen.text("rOFF")
+    elseif rndState==1 then
+      screen.text("rREC")
+    elseif rndState==2 then
+      screen.text("rDEL")
+    elseif rndState==3 then
+      screen.text("rALL")
+    end
+    
     screen.move(25,60)
     screen.text("clear")
     screen.move(65,60)

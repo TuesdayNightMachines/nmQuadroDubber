@@ -1,5 +1,5 @@
 -- nmQuadroDubber
--- 1.0.2 @NightMachines
+-- 1.0.3 @NightMachines
 -- llllllll.co/t/nmquadrodubber/
 --
 -- Overdub external audio
@@ -156,11 +156,11 @@ end
 -- ENCODERS
 function enc(id,delta)
   if id==3 then -- E3
-    if k1hold==1 then
+    if k1hold==1 then -- fade between input monitor and softcut output
       mon = util.clamp(mon+delta/10,0.0,1.0)
       audio.level_monitor(mon)
       audio.level_cut((mon-1)*-1)
-    else
+    else -- switch tape loop
       if del==1 then
         del=0
         recTape(tape,0)
@@ -263,11 +263,12 @@ function rndRec()
   if math.random(0,10)<=rndProb then
     if state==1 then 
       state = 0
-      recTape(tape,state)
+      recTape(tape,0)
     else 
       del=0
-      state = 1
+      recTape(tape,0)
       tape = math.random(1,4) -- randomly jump to tape loop
+      state = 1
       overStr = math.random(0,10)
       softcut.pre_level(tape,((overStr-10.0)/10.0)*-1)
       softcut.rec_level(tape,overStr/10.0)
@@ -281,11 +282,14 @@ end
 function rndDel()
   if math.random(0,10)<=rndProb then
     if del==0 then
+      del=0
       state=0
+      recTape(tape,state)
       del=1
       tape = math.random(1,4)
       recTape(tape,state)
     else
+      recTape(tape,0)
       del=0
       recTape(tape,state)
     end

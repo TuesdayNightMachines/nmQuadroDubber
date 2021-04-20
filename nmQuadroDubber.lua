@@ -1,5 +1,5 @@
 -- nmQuadroDubber
--- 1.0.3  @NightMachines
+-- 1.0.4 @NightMachines
 -- llllllll.co/t/nmquadrodubber/
 --
 -- Overdub external audio
@@ -16,10 +16,11 @@
 -- E3: select tape loop/s
 --     monitor mix
 
+
 -- norns.script.load("code/nmQuadroDubber/nmQuadroDubber.lua")
 
 --adjust encoder settigns to your liking
---norns.enc.sens(0,2)
+norns.enc.sens(0,2)
 norns.enc.accel(0,false)
 
 
@@ -30,7 +31,7 @@ rndProb = 5 -- probability of change happening in random modes 0-10 (0-100%)
 
 pPos = 1 --playhead position 1-50
 tape = 1 --tape loop strips 1-4
-tapeSpeed = 1.0 --current tape speed 0.1-4.0
+tapeSpeed = 1.0 --current tape speed -4.0 to 4.0
 strip = { --display colors for each of the 4 the tape loop strips 0-12
   {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
   {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
@@ -187,8 +188,8 @@ function enc(id,delta)
       end
     end
     
-  elseif id==1 then -- E1 changes softcut tape speed (rate) between 0.1 and 4.0
-    tapeSpeed = util.clamp(tapeSpeed+delta/10,0.1,4.0)
+  elseif id==1 then -- E1 changes softcut tape speed (rate) between -4.0 and 4.0
+    tapeSpeed = util.clamp(tapeSpeed+delta/10,-4.0,4.0)
     for i=1,4 do
       softcut.rate(i,tapeSpeed)
     end
@@ -200,13 +201,23 @@ end
 -- SOFTCUT POSITION POLL AND EVENT TRIGGER
 function update_positions(v,p) -- v = voice, p = position
   if v==1 then -- on every voice 1 position count
-    pPos = pPos+1 
+    if tapeSpeed>=0 then
+      pPos = pPos+1 
+    else
+      pPos = pPos-1 
+    end
     if pPos>50 then -- reset playheads after 50 position counts
       softcut.position(1,0)
       softcut.position(2,20)
       softcut.position(3,40)
       softcut.position(4,60)
       pPos = 1
+    elseif pPos<1 then
+      softcut.position(1,20)
+      softcut.position(2,40)
+      softcut.position(3,60)
+      softcut.position(4,80)
+      pPos = 50        
     end
 
     if state==1 then -- if RECording
@@ -245,6 +256,7 @@ function recTape(t,s) -- t=tape, s=state
     softcut.level_input_cut(2,t,0.0)
     softcut.pre_level(t,0.0) -- turn overdub preserve to 0
     softcut.rec_level(t,1.0) -- record silence to softcut
+
   else -- if DEL is inactive
     softcut.level_input_cut(1,t,1.0) -- turn external input volume to softcut up to 1
     softcut.level_input_cut(2,t,1.0)

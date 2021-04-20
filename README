@@ -1,18 +1,24 @@
 nmQuadroDubber
-1.0 @NightMachines
+1.0.2 @NightMachines
 https://llllllll.co/t/nmquadrodubber/
 
-There are four 20-second “tape loops” running in sync, represented as four vertical columns.
+There are four 20-second “tape loops” running in sync, represented by four vertical columns, stereo-panned from left to right.
 
 Adjust the tape speed by turning E1.
 
-A record head, represented as a white line, constantly moves over one of the loops. Make it jump to another loop with E3 (tape). Press K2 (rec) to start and stop recording external audio at the position of the record head. Insert silence by pressing K3 (del).
+A record head, represented by a white line, constantly moves over one of the loops. Make it jump to another loop with E3 (tape). Press K2 (rec) to start and stop recording external audio at the position of the record head. Insert silence by pressing K3 (del).
 
 Turn E2 (lvl) to adjust the overdub level. 10 means the external audio will overwrite the tape completely. Turning E2 (lvl) down will record the external audio quieter, letting the already present audio on the tape loop still sound trough, mixing both signals.
 
 Hold K1 to display alternative control functions.
 
-Holding K1 and pressing K2 (clear) will erase the entire tape loop under the record head.
+Holding K1 and pressing K2 (rOFF/rREC/rDEL/rALL) will switch random modes:
+rOFF: random mode off
+rREC: randomly toggle recording, switch tape loop and change level
+rDEL: randomly toggle deletion and switch tape loop
+rALL: both of the above
+
+Holding K1 and pressing K3 (clear) will erase the entire tape loop under the record head.
 
 Holding K1 and turning E2 (fade) adjusts Softcut’s fade parameter, inserting a fade between loop start and end points. Turning this up can make the audio sound smoother.
 

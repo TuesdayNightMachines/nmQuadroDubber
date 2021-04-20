@@ -1,12 +1,12 @@
 nmQuadroDubber
-1.0.4 @NightMachines
+1.0.5 @NightMachines
 https://llllllll.co/t/nmquadrodubber/
 
-There are four 20-second “tape loops” running in sync, represented by four vertical columns, stereo-panned from left to right.
+There are four 20-second “tape loops”, represented by four vertical columns, stereo-panned from left to right.
 
-Adjust the tape speed by turning E1.
+A record head, represented by a white line, constantly moves over one of the loops. Make it jump to another loop with E3 (t). Press K2 (rec) to start and stop recording external audio at the position of the record head. Insert silence by pressing K3 (del).
 
-A record head, represented by a white line, constantly moves over one of the loops. Make it jump to another loop with E3 (tape). Press K2 (rec) to start and stop recording external audio at the position of the record head. Insert silence by pressing K3 (del).
+Adjust the speed of the selected tape loop by turning E1.
 
 Turn E2 (lvl) to adjust the overdub level. 10 means the external audio will overwrite the tape completely. Turning E2 (lvl) down will record the external audio quieter, letting the already present audio on the tape loop still sound trough, mixing both signals.
 

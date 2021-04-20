@@ -1,5 +1,5 @@
 -- nmQuadroDubber
--- 1.0.4 @NightMachines
+-- 1.0.5 @NightMachines
 -- llllllll.co/t/nmquadrodubber/
 --
 -- Overdub external audio
@@ -20,7 +20,7 @@
 -- norns.script.load("code/nmQuadroDubber/nmQuadroDubber.lua")
 
 --adjust encoder settigns to your liking
-norns.enc.sens(0,2)
+--norns.enc.sens(0,2)
 norns.enc.accel(0,false)
 
 
@@ -28,7 +28,9 @@ norns.enc.accel(0,false)
 rndProb = 5 -- probability of change happening in random modes 0-10 (0-100%)
 
 
-
+headPos = {0,0,0,0}
+posOffset = {0,20,40,60}
+tapeSpeeds = {1.0,1.0,1.0,1.0}
 pPos = 1 --playhead position 1-50
 tape = 1 --tape loop strips 1-4
 tapeSpeed = 1.0 --current tape speed -4.0 to 4.0
@@ -88,11 +90,11 @@ function init()
     softcut.recpre_slew_time(i,0.0)
     softcut.pre_level(i,1.0)
     softcut.rec(i,1)
+    softcut.phase_quant(i,0.4) -- send a counter message for voices every 0.4 seconds. 0.4*50=20 seconds, which is the loop length for each tape strip. there are 50 lines of pixels in each tape strip rectangle on screen, so this function is giving me a counter tick for each line that needs to be drawn on screen
   end
   
   redraw()
   
-  softcut.phase_quant(1,0.4) -- send a counter message for voice 1 every 0.4 seconds. 0.4*50=20 seconds, which is the loop length for each tape strip. there are 50 lines of pixels in each tape strip rectangle on screen, so this function is giving me a counter tick for each line that needs to be drawn on screen
   softcut.event_phase(update_positions)
   softcut.poll_start_phase()
   
@@ -189,46 +191,29 @@ function enc(id,delta)
     end
     
   elseif id==1 then -- E1 changes softcut tape speed (rate) between -4.0 and 4.0
-    tapeSpeed = util.clamp(tapeSpeed+delta/10,-4.0,4.0)
-    for i=1,4 do
-      softcut.rate(i,tapeSpeed)
+    tapeSpeeds[tape] = util.clamp(tapeSpeeds[tape]+delta/10,-4.0,4.0)
+    if tapeSpeeds[tape]<0.1 and tapeSpeeds[tape]>-0.1 then
+      tapeSpeeds[tape]=0.0
     end
+    softcut.rate(tape,tapeSpeeds[tape])
   end
-  
 end
 
 
--- SOFTCUT POSITION POLL AND EVENT TRIGGER
-function update_positions(v,p) -- v = voice, p = position
-  if v==1 then -- on every voice 1 position count
-    if tapeSpeed>=0 then
-      pPos = pPos+1 
-    else
-      pPos = pPos-1 
-    end
-    if pPos>50 then -- reset playheads after 50 position counts
-      softcut.position(1,0)
-      softcut.position(2,20)
-      softcut.position(3,40)
-      softcut.position(4,60)
-      pPos = 1
-    elseif pPos<1 then
-      softcut.position(1,20)
-      softcut.position(2,40)
-      softcut.position(3,60)
-      softcut.position(4,80)
-      pPos = 50        
-    end
 
-    if state==1 then -- if RECording
+function update_positions(v,p) -- v = voice, p = position
+  headPos[v] = p - posOffset[v]
+  
+  if tape==v then
+    
+  if state==1 then -- if RECording
       color = util.clamp(overStr+2,0,12) -- set corrent positions color between 2-12
-      strip[tape][pPos] = color -- write color into array
+      strip[tape][round(headPos[v]/0.4+1)] = color -- write color into array
     end
     
     if del==1 then -- id DELeting
-      strip[tape][pPos] = 0 -- write black to array
+      strip[tape][round(headPos[v]/0.4+1)] = 0 -- write black to array
     end
-    
     
     if rndState==0 then -- Random rec/del off
       --do nothing
@@ -244,9 +229,10 @@ function update_positions(v,p) -- v = voice, p = position
         rndDel()
       end
     end
-        
   end
+  --redraw()
 end
+
 
 
 -- RECORD + DELETE FUNCTION
@@ -313,22 +299,50 @@ end
 function redraw()
   screen.clear()
   screen.line_width(1)
+
+  -- draw tape strip rectangles
+  
+  for i=0,3 do
+    if tape==i+1 then
+      screen.level(15)
+      screen.rect(i*32+1,1,29,51)
+      screen.stroke()
+    else
+      screen.level(5)
+      screen.rect(i*32+1,1,29,51)
+      screen.stroke()
+    end
+    
+  end
   
   -- draw recorded tape strip lines inside rectangles
   for j=1,4 do
     for k=1,50 do
       screen.level(strip[j][k]) -- get color for current tape/voice position form array
-      screen.move((j-1)*32+4, k+1)
-      screen.line((j-1)*32+26, k+1)
+      screen.move((j-1)*32+6, k+1)
+      screen.line((j-1)*32+24, k+1)
       screen.stroke()
     end
   end
   
-  -- draw moving playhead line
-  screen.level(15)
-  screen.move((tape-1)*32+2, pPos+1)
-  screen.line((tape-1)*32+28, pPos+1)
-  screen.stroke()
+  -- draw moving playhead lines
+  for i=1,4 do
+    if tape==i then
+      screen.level(15)
+      screen.move((i-1)*32+2,headPos[i]/0.4+2)
+      screen.line((i-1)*32+28,headPos[i]/0.4+2)
+      screen.stroke()
+    else
+      screen.level(5)
+      screen.move((i-1)*32+2,headPos[i]/0.4+2)
+      screen.line((i-1)*32+4,headPos[i]/0.4+2)
+      screen.stroke()
+      screen.move((i-1)*32+26,headPos[i]/0.4+2)
+      screen.line((i-1)*32+28,headPos[i]/0.4+2)
+      screen.stroke()
+    end
+    
+  end
   
   --draw text
   screen.level(15)
@@ -365,15 +379,12 @@ function redraw()
     end
     screen.move(70,60)
     screen.text("lvl "..overStr)
-    screen.move(101,60)
-    screen.text("tape "..tape)
-  end
-  
-  -- draw tape strip rectangles
-  screen.level(5)
-  for i=0,3 do
-    screen.rect(i*32+1,1,29,51)
-    screen.stroke()
+    screen.move(102,60)
+    screen.text("t"..tape)
+--    screen.move(108,60)
+--    screen.text("s")
+    screen.move(128,60)
+    screen.text_right(tapeSpeeds[tape])
   end
 
   screen.update()
@@ -382,8 +393,14 @@ end
 
 -- timer to update the screen at 10 fps
 re = metro.init()
-re.time = 1.0 / 10
+re.time = 1.0 / 15
 re.event = function()
   redraw()
 end
 re:start()
+
+
+
+function round(n)
+  return n % 1 >= 0.5 and math.ceil(n) or math.floor(n)
+end

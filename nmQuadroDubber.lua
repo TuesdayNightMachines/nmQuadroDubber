@@ -1,12 +1,13 @@
 -- nmQuadroDubber
--- 1.0.5 @NightMachines
+-- 1.0.6 @NightMachines
 -- llllllll.co/t/nmquadrodubber/
 --
 -- Overdub external audio
 -- onto four tape loops
 --
 -- K1: hold for /alt menu
--- E1: tape speed
+-- E1: current tape speed/
+--     all tape speeds
 -- K2: record to tape/
 --     random modes
 -- K3: record silence/
@@ -20,39 +21,53 @@
 -- norns.script.load("code/nmQuadroDubber/nmQuadroDubber.lua")
 
 --adjust encoder settigns to your liking
---norns.enc.sens(0,2)
+-- norns.enc.sens(0,2)
 norns.enc.accel(0,false)
 
 
 -- LET'S GO!
-rndProb = 5 -- probability of change happening in random modes 0-10 (0-100%)
+local rndProb = 5 -- probability of change happening in random modes 0-10 (0-100%)
+
+--MIDI CC# ASSIGNMENT
+local midiCh = 1 -- MIDI input channel 1-16
+local ccTape = 1 -- tape loop selection
+local ccSpeeds = {11,12,13,14} -- set individual tape loop speed controls
+local ccLvl = 2 -- adjust overdub level
+local ccRec = 3 -- enable REC on CC >= 64 
+local ccDel = 4 -- enable DEL on CC >= 64
+local ccFade = 5 -- fade parameter
+local ccMon = 6 -- input monitor
+local ccRnd = 7 -- randomizer rOFF > rREC > rDEL > rALL 
+local ccClear = 8 -- clear current loop on CC >= 64, use momentary switch 
 
 
-headPos = {0,0,0,0}
-posOffset = {0,20,40,60}
-tapeSpeeds = {1.0,1.0,1.0,1.0}
-pPos = 1 --playhead position 1-50
-tape = 1 --tape loop strips 1-4
-tapeSpeed = 1.0 --current tape speed -4.0 to 4.0
-strip = { --display colors for each of the 4 the tape loop strips 0-12
+
+
+local headPos = {0,0,0,0}
+local posOffset = {0,20,40,60}
+local tapeSpeeds = {1.0,1.0,1.0,1.0}
+local tape = 1 --tape loop strips 1-4
+local strip = { --display colors for each of the 4 the tape loop strips 0-12
   {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
   {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
   {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
   {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}
 }
-state = 0 --0 play, 1 record/overdub (rec/REC on screen) 
-overStr = 10 -- 0-10 overdub strength, "lvl" value on screen
-color = 0 -- color for the record lines on the tape loop strips 0-12
-k1hold = 0 -- 1 = K1 is held
-fadeTime = 0 -- softcut fade time parameter
-del = 0 -- 0 play, 1 delete (del/DEL on screen) 
-mon = 0.0 --monitor volume 0-1 (mon on screen)
+local state = 0 --0 play, 1 record/overdub (rec/REC on screen) 
+local overStr = 10 -- 0-10 overdub strength, "lvl" value on screen
+local color = 0 -- color for the record lines on the tape loop strips 0-12
+local k1hold = 0 -- 1 = K1 is held
+local fadeTime = 0 -- softcut fade time parameter
+local del = 0 -- 0 play, 1 delete (del/DEL on screen) 
+local mon = 0.0 --monitor volume 0-1 (mon on screen)
 
-rndState = 0 -- random modes: 0=off, 1=random rec, 2=random del, 3=random all
+local rndState = 0 -- random modes: 0=off, 1=random rec, 2=random del, 3=random all
 
+local midi_signal_in
 
 -- INIT
 function init()
+  connect()
   softcut.buffer_clear()
   softcut.buffer_clear_region_channel(1,0,80) -- clear 80 seconds silence, probably not neccessary
   audio.level_adc_cut(1)
@@ -160,19 +175,11 @@ end
 function enc(id,delta)
   if id==3 then -- E3
     if k1hold==1 then -- fade between input monitor and softcut output
-      mon = util.clamp(mon+delta/10,0.0,1.0)
+      mon = util.clamp(mon+delta/20,0.0,1.0)
       audio.level_monitor(mon)
       audio.level_cut((mon-1)*-1)
     else -- switch tape loop
-      if del==1 then
-        del=0
-        recTape(tape,0)
-        del=1
-      else
-        recTape(tape,0) --turn off previous recording
-      end
-      tape = util.clamp(tape+delta,1,4)
-      recTape(tape,state)
+      switchTape(util.clamp(tape+delta,1,4))
     end
     
   elseif id==2 then -- E2
@@ -191,16 +198,103 @@ function enc(id,delta)
     end
     
   elseif id==1 then -- E1 changes softcut tape speed (rate) between -4.0 and 4.0
-    tapeSpeeds[tape] = util.clamp(tapeSpeeds[tape]+delta/10,-4.0,4.0)
-    if tapeSpeeds[tape]<0.1 and tapeSpeeds[tape]>-0.1 then
-      tapeSpeeds[tape]=0.0
+    if k1hold==0 then
+      tapeSpeeds[tape] = util.clamp(tapeSpeeds[tape]+delta/10,-4.0,4.0)
+      if tapeSpeeds[tape]<0.1 and tapeSpeeds[tape]>-0.1 then
+        tapeSpeeds[tape]=0.0
+      end
+      softcut.rate(tape,tapeSpeeds[tape])
+    else
+      for i=1,4 do
+        tapeSpeeds[i] = util.clamp(tapeSpeeds[i]+delta/10,-4.0,4.0)
+        if tapeSpeeds[i]<0.1 and tapeSpeeds[i]>-0.1 then
+          tapeSpeeds[i]=0.0
+        end
+        softcut.rate(i,tapeSpeeds[i])
+      end
     end
-    softcut.rate(tape,tapeSpeeds[tape])
   end
 end
 
 
+-- MIDI INPUT
+function connect()
+  midi_signal_in = midi.connect(1)
+  midi_signal_in.event = on_midi_event
+end
 
+function on_midi_event(data)
+  msg = midi.to_msg(data)
+  play(msg)
+end
+
+function play(msg)
+  if msg.type == "cc" and msg.ch==midiCh then
+    if msg.cc == ccTape then
+      switchTape(round(util.linlin(0,127,1,4,msg.val)))
+    elseif msg.cc == ccLvl then
+      overStr = round(util.linlin(0,127,0,10,msg.val))
+      if state==1 then
+        softcut.pre_level(tape,((overStr-10.0)/10.0)*-1) -- turn pre_level down to overdub
+        softcut.rec_level(tape,overStr/10.0) -- turn rec_level up
+      end
+    elseif msg.cc == ccRec then
+      if msg.val >= 64 then
+        del=0
+        state=1
+        recTape(tape,state)
+      else
+        state=0
+        recTape(tape,state)
+      end
+    elseif msg.cc == ccDel then
+      if msg.val >= 64 then
+        state=0
+        del=1
+        recTape(tape,state)
+      else
+        del=0
+        recTape(tape,state)
+      end
+    elseif msg.cc == ccFade then
+      fadeTime = round(util.linlin(0,127,0,5,msg.val))
+      for i=1,4 do
+        softcut.fade_time(i,fadeTime)
+      end
+    elseif msg.cc == ccMon then
+      mon = round(util.linlin(0,127,0,10,msg.val))/10
+      audio.level_monitor(mon)
+      audio.level_cut((mon-1)*-1)
+    elseif msg.cc == ccRnd then
+      rndState=round(util.linlin(0,127,0,3,msg.val))
+    elseif msg.cc == ccClear then
+      if msg.val >= 64 then
+        if tape==1 then  
+          softcut.buffer_clear_region_channel(1,0,20)
+        elseif tape==2 then
+          softcut.buffer_clear_region_channel(1,20,20)
+        elseif tape==3 then
+          softcut.buffer_clear_region_channel(1,40,20)
+        elseif tape==4 then
+          softcut.buffer_clear_region_channel(1,60,20)
+        end
+        for i=1,50 do -- set all tape loop strip line colors to 0=black
+          strip[tape][i]=0
+        end
+      end
+    else
+      for i=1,4 do
+        if msg.cc==ccSpeeds[i] then
+          tapeSpeeds[i] = round(util.linlin(0,127,-40,40,msg.val))/10
+          softcut.rate(i,tapeSpeeds[i])
+        end
+      end
+    end
+  end
+end
+
+
+-- POLL TAPE LOOP POSITIONS
 function update_positions(v,p) -- v = voice, p = position
   headPos[v] = p - posOffset[v]
   
@@ -234,6 +328,19 @@ function update_positions(v,p) -- v = voice, p = position
 end
 
 
+-- SWITCH TAPE
+function switchTape(t)
+  if del==1 then
+    del=0
+    recTape(tape,0)
+    del=1
+  else
+    recTape(tape,0) --turn off previous recording
+  end 
+  tape = t
+  recTape(tape,state)
+end
+
 
 -- RECORD + DELETE FUNCTION
 function recTape(t,s) -- t=tape, s=state
@@ -259,18 +366,18 @@ end
 -- RANDOM RECORDING FEATURE
 function rndRec()
   if math.random(0,10)<=rndProb then
-    if state==1 then 
+    if state==1 then -- if REC on then switch off 
       state = 0
       recTape(tape,0)
-    else 
+    else -- if REC off then switch DEL off and REC on
       del=0
       recTape(tape,0)
-      tape = math.random(1,4) -- randomly jump to tape loop
       state = 1
-      overStr = math.random(0,10)
+      overStr = math.random(1,10)
       softcut.pre_level(tape,((overStr-10.0)/10.0)*-1)
       softcut.rec_level(tape,overStr/10.0)
-      recTape(tape,state)
+      switchTape(math.random(1,4))
+      --recTape(tape,state)
     end
   end      
 end
@@ -362,8 +469,8 @@ function redraw()
     screen.text("clear")
     screen.move(65,60)
     screen.text("fade "..fadeTime)
-    screen.move(100,60)
-    screen.text("mon "..math.floor(mon*10))
+    screen.move(99,60)
+    screen.text("mon "..round(mon*20))
   else
     screen.move(0,60)
     if state==0 then

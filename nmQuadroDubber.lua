@@ -1,5 +1,5 @@
 -- nmQuadroDubber
--- 1.0.6 @NightMachines
+-- 1.1.0 @NightMachines
 -- llllllll.co/t/nmquadrodubber/
 --
 -- Overdub external audio
@@ -21,53 +21,61 @@
 -- norns.script.load("code/nmQuadroDubber/nmQuadroDubber.lua")
 
 --adjust encoder settigns to your liking
--- norns.enc.sens(0,2)
+norns.enc.sens(0,2)
 norns.enc.accel(0,false)
 
 
 -- LET'S GO!
-local rndProb = 5 -- probability of change happening in random modes 0-10 (0-100%)
-
---MIDI CC# ASSIGNMENT
-local midiCh = 1 -- MIDI input channel 1-16
-local ccTape = 1 -- tape loop selection
-local ccSpeeds = {11,12,13,14} -- set individual tape loop speed controls
-local ccLvl = 2 -- adjust overdub level
-local ccRec = 3 -- enable REC on CC >= 64 
-local ccDel = 4 -- enable DEL on CC >= 64
-local ccFade = 5 -- fade parameter
-local ccMon = 6 -- input monitor
-local ccRnd = 7 -- randomizer rOFF > rREC > rDEL > rALL 
-local ccClear = 8 -- clear current loop on CC >= 64, use momentary switch 
-
-
-
 
 local headPos = {0,0,0,0}
 local posOffset = {0,20,40,60}
 local tapeSpeeds = {1.0,1.0,1.0,1.0}
-local tape = 1 --tape loop strips 1-4
 local strip = { --display colors for each of the 4 the tape loop strips 0-12
   {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
   {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
   {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
   {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}
 }
-local state = 0 --0 play, 1 record/overdub (rec/REC on screen) 
-local overStr = 10 -- 0-10 overdub strength, "lvl" value on screen
 local color = 0 -- color for the record lines on the tape loop strips 0-12
 local k1hold = 0 -- 1 = K1 is held
-local fadeTime = 0 -- softcut fade time parameter
-local del = 0 -- 0 play, 1 delete (del/DEL on screen) 
-local mon = 0.0 --monitor volume 0-1 (mon on screen)
-
-local rndState = 0 -- random modes: 0=off, 1=random rec, 2=random del, 3=random all
-
+local currentTape = 1
 local midi_signal_in
+local actions = {"No", "Yes"}
+local rndStates = {"rOff", "rRec", "rDel", "rAll"}
+local tSpeeds = {"speed1", "speed2", "speed3", "speed4"}
+local devices = {}
 
 -- INIT
 function init()
-  connect()
+  for id,device in pairs(midi.vports) do
+    devices[id] = device.name
+  end
+  params:add_group("nmQuadroDubber",23)
+  params:add{type = "option", id = "midi_input", name = "Midi Input", options = devices, default = 1, action=set_midi_input}
+  params:add_separator()
+  params:add{type = "number", id = "tape", name = "Tape Loop #", min = 1, max = 4, default = 1, wrap = false, action=function(x) switchTape(x) end}
+  params:add{type = "number", id = "rec", name = "OFF/REC/DEL", min = 0, max = 2, default = 0, wrap = false, action=function(x) recTape(params:get("tape"),x) end} -- 0=off 1=rec 2=del
+  params:add{type = "number", id = "lvl", name = "Overdub Level", min = 0, max = 10, default = 10, action=function(x) lvl(x) end}
+  params:add{type = "number", id = "mon", name = "Input Monitor", min = 0.0, max = 1.0, default = 0.0, action=function(x) mon(x) end}
+  params:add{type = "number", id = "fade", name = "Fade", min = 0, max = 5, default = 0, action=function(x) fade(x) end}
+  params:add_separator()
+  params:add{type = "number", id = "rnd", name = "rOFF/rREC/rDEL/rALL", min = 0, max = 3, default = 0, wrap = false, action=function(x) rndRecCheck() end}
+  params:add{type = "number", id = "prob", name = "rProbability", min = 0, max = 10, default = 5}
+  params:add_separator()
+  params:add{type = "option", id = "clear", name = "Clear Current Loop", options = actions, default = 1, action=function(x) clear(x,params:get("tape")) end}
+  params:add{type = "option", id = "clearall", name = "Clear All Loops", options = actions, default = 1, action=function(x) clear(x,5) end}
+  params:add_separator()
+  params:add{type = "number", id = "speed1", name = "Loop #1 Speed", min = -8.0, max = 8.0, default = 1.0, action=function(x)       softcut.rate(1,x) end}
+  params:add{type = "number", id = "speed2", name = "Loop #2 Speed", min = -8.0, max = 8.0, default = 1.0, action=function(x)       softcut.rate(2,x) end}
+  params:add{type = "number", id = "speed3", name = "Loop #3 Speed", min = -8.0, max = 8.0, default = 1.0, action=function(x)       softcut.rate(3,x) end}
+  params:add{type = "number", id = "speed4", name = "Loop #4 Speed", min = -8.0, max = 8.0, default = 1.0, action=function(x)       softcut.rate(4,x) end}
+  params:add_separator()
+  params:add{type = "number", id = "pan1", name = "Loop #1 Pan", min = -1.0, max = 1.0, default = 1.0, action=function(x)       pan(1,x) end}
+  params:add{type = "number", id = "pan2", name = "Loop #2 Pan", min = -1.0, max = 1.0, default = 0.3, action=function(x)       pan(2,x) end}
+  params:add{type = "number", id = "pan3", name = "Loop #3 Pan", min = -1.0, max = 1.0, default = -0.3, action=function(x)       pan(3,x) end}
+  params:add{type = "number", id = "pan4", name = "Loop #4 Pan", min = -1.0, max = 1.0, default = -1.0, action=function(x)       pan(4,x) end}
+  --params:add{type = "number", id = "del", name = "del", min = 0, max = 1, default = 0, wrap = true, action=function(x) del(x) end}  
+  
   softcut.buffer_clear()
   softcut.buffer_clear_region_channel(1,0,80) -- clear 80 seconds silence, probably not neccessary
   audio.level_adc_cut(1)
@@ -75,22 +83,22 @@ function init()
   softcut.loop_start(1,0) -- tape/voice 1 setup
   softcut.loop_end(1,20)
   softcut.position(1,0)
-  softcut.pan(1,1) -- pan hard left
+  softcut.pan(1,params:get("pan1")) -- pan hard left
 
   softcut.loop_start(2,20) -- tape/voice 2 setup
   softcut.loop_end(2,40)
   softcut.position(2,20)
-  softcut.pan(2,0.3) -- pan a little left
+  softcut.pan(2,params:get("pan2")) -- pan a little left
   
   softcut.loop_start(3,40)-- tape/voice 3 setup
   softcut.loop_end(3,60)
   softcut.position(3,40)
-  softcut.pan(3,-0.3)  -- pan a little right
+  softcut.pan(3,params:get("pan3"))  -- pan a little right
   
   softcut.loop_start(4,60)-- tape/voice 3 setup
   softcut.loop_end(4,80)
   softcut.position(4,60)
-  softcut.pan(4,-1)  -- pan hard right
+  softcut.pan(4,params:get("pan4"))  -- pan hard right
   
   
   for i=1,4 do -- more setup for the 4 voices
@@ -101,7 +109,7 @@ function init()
     softcut.play(i,1)
     softcut.rate(i,1.0)
     softcut.fade_time(i,0.0)
-    softcut.rec_offset(i,0.0)
+    --softcut.rec_offset(i,0.0)
     softcut.recpre_slew_time(i,0.0)
     softcut.pre_level(i,1.0)
     softcut.rec(i,1)
@@ -116,23 +124,148 @@ function init()
 end
 
 
+function set_midi_input(x)
+  update_midi()
+end
+
+function update_midi()
+  if midi_input and midi_input.event then
+    midi_input.event = nil
+  end
+  midi_input = midi.connect(params:get("midi_input"))
+  midi_input.event = midi_input_event
+end
+
+function midi_input_event(data)
+  msg = midi.to_msg(data)
+  -- do something if you want
+end
+
+
+
+
+-- SWITCH TAPE
+function switchTape(t)
+  recTape(currentTape,0)
+  currentTape=t
+  recTape(params:get("tape"),params:get("rec"))
+end
+
+
+
+
+-- RECORD + DELETE FUNCTION
+function recTape(t,s) -- t=tape, s=state
+  if s==2 then -- if DEL is active
+    softcut.level_input_cut(1,t,0.0) -- turn external input volume to softcut down to 0
+    softcut.level_input_cut(2,t,0.0)
+    softcut.pre_level(t,0.0) -- turn overdub preserve to 0
+    softcut.rec_level(t,1.0) -- record silence to softcut
+  else
+    softcut.level_input_cut(1,t,1.0) -- turn external input volume to softcut up to 1
+    softcut.level_input_cut(2,t,1.0)
+    if s==1 then -- if DEL is inactive
+     softcut.pre_level(t,((params:get("lvl")-10.0)/10.0)*-1) -- set overdub preserve to inverse of "lvl" value
+    else
+      softcut.pre_level(t,1.0) -- set overdub preserve to 1, to keep audio on tape indefinitely
+    end
+    softcut.rec_level(t,s*(params:get("lvl")/10.0)) -- set record level according to "lvl" value    
+  end
+end
+
+
+
+
+-- RANDOM RECORDING FEATURE
+function rndRec(x)
+  if x==1 then
+    if math.random(0,10)<=params:get("prob") then
+      params:set("tape",math.random(1,4))
+      params:set("lvl",math.random(1,10))
+      params:set("rec",math.random(0,1))
+    end
+  elseif x==2 then
+    if math.random(0,10)<=params:get("prob") then
+      if math.random(0,1)==1 then
+        params:set("tape",math.random(1,4))
+        params:set("rec",2)
+      else
+        params:set("rec",0)
+      end
+    end
+  elseif x==3 then
+    if math.random(0,10)<=params:get("prob") then
+      params:set("tape",math.random(1,4))
+      params:set("lvl",math.random(1,10))
+      params:set("rec",math.random(0,3))
+    end
+  elseif x==0 then
+    params:set("rec",0)
+  end 
+end
+
+function rndRecCheck()
+  if params:get("rnd")==0 then
+    params:set("rec",0)
+  end
+end
+
+
+
+function clear(i,x) -- i=2 clear, i=1 don't clear
+  if i==2 and x==5 then -- clear all
+    softcut.buffer_clear_region_channel(1,0,80)
+    for i=1,4 do
+      for j=1,50 do -- set all tape loop strip line colors to 0=black
+        strip[i][j]=0
+      end
+    end
+  elseif i==2 and x<5 then
+    softcut.buffer_clear_region_channel(1,posOffset[x],20)
+    for i=1,50 do -- set all tape loop strip line colors to 0=black
+      strip[x][i]=0
+    end
+  end
+end
+
+function lvl(x)
+  if params:get("rec")==1 then
+    softcut.pre_level(params:get("tape"),((x-10.0)/10.0)*-1)
+    softcut.rec_level(params:get("tape"),x/10.0)
+  end
+end
+
+function mon(x)
+  audio.level_monitor(x)
+  audio.level_cut((x-1)*-1)
+end
+
+function fade(x)
+  for i=1,4 do
+    softcut.fade_time(i,x)
+  end
+end
+
+function pan(t,p)
+  softcut.pan(t,params:get("pan"))
+end
+
+
+
 -- BUTTONS
 function key(id,st)
   if id==2 and st==1 then -- K2
     if k1hold==1 then -- if K1 is held, K2 switches through random modes
-      rndState = rndState+1
-      if rndState>3 then
-        rndState=0
+      if params:get("rnd")==3 then
+        params:set("rnd",0)
+      else
+        params:delta("rnd",1)
       end
-
-      else -- if K1 is not held, de/activate RECording
-      if state==1 then 
-        state = 0
-        recTape(tape,state)
-      else 
-        del=0
-        state = 1
-        recTape(tape,state)
+    else -- if K1 is not held, de/activate RECording
+      if params:get("rec")==1 then
+        params:set("rec",0)
+      else
+        params:set("rec",1)
       end
     end
   elseif id==1 then -- K1
@@ -143,263 +276,82 @@ function key(id,st)
     end
   elseif id==3 and st==1 then -- K3
     if k1hold==1 then -- if K1 is held, clear current tape loop strip
-      if tape==1 then 
-        softcut.buffer_clear_region_channel(1,0,20)
-      elseif tape==2 then
-        softcut.buffer_clear_region_channel(1,20,20)
-      elseif tape==3 then
-        softcut.buffer_clear_region_channel(1,40,20)
-      elseif tape==4 then
-        softcut.buffer_clear_region_channel(1,60,20)
-      end
-      for i=1,50 do -- set all tape loop strip line colors to 0=black
-        strip[tape][i]=0
-      end
-
+      params:set("clear",2)
+      params:set("clear",1)
     else -- if K1 is not held, de/activate deletion
-      if del==0 then
-        state=0 -- disable RECording in case it's actiue
-        del=1
-        recTape(tape,state)
+      if params:get("rec")==2 then
+        params:set("rec",0)
       else
-        del=0
-        recTape(tape,state)
+        params:set("rec",2)
       end
-      
     end
   end
 end
+
+
 
 
 -- ENCODERS
 function enc(id,delta)
   if id==3 then -- E3
     if k1hold==1 then -- fade between input monitor and softcut output
-      mon = util.clamp(mon+delta/20,0.0,1.0)
-      audio.level_monitor(mon)
-      audio.level_cut((mon-1)*-1)
+      params:delta("mon",delta/20)
     else -- switch tape loop
-      switchTape(util.clamp(tape+delta,1,4))
+      params:delta("tape",delta)
     end
     
   elseif id==2 then -- E2
     if k1hold==0 then -- if K1 is not held, E2 changes overdub preserve + RECord level
-      overStr = util.clamp(overStr+delta,0,10)
-      if state==1 then
-        softcut.pre_level(tape,((overStr-10.0)/10.0)*-1) -- turn pre_level down to overdub
-        softcut.rec_level(tape,overStr/10.0) -- turn rec_level up
-      end
-
+      params:delta("lvl",delta)
     else -- if K1 is held, adjust softcut fade time parameter
-      fadeTime = util.clamp(fadeTime+delta,0,5)
-      for i=1,4 do
-        softcut.fade_time(i,fadeTime)
-      end
+      params:delta("fade",delta)
     end
     
   elseif id==1 then -- E1 changes softcut tape speed (rate) between -4.0 and 4.0
     if k1hold==0 then
-      tapeSpeeds[tape] = util.clamp(tapeSpeeds[tape]+delta/10,-4.0,4.0)
-      if tapeSpeeds[tape]<0.1 and tapeSpeeds[tape]>-0.1 then
-        tapeSpeeds[tape]=0.0
+      if params:get(tSpeeds[params:get("tape")])+delta/10<0.1 and params:get(tSpeeds[params:get("tape")])+delta/10>-0.1 then
+        params:set(tSpeeds[params:get("tape")],0.0)
+      else
+        params:delta(tSpeeds[params:get("tape")],delta/10)
       end
-      softcut.rate(tape,tapeSpeeds[tape])
+
     else
       for i=1,4 do
-        tapeSpeeds[i] = util.clamp(tapeSpeeds[i]+delta/10,-4.0,4.0)
-        if tapeSpeeds[i]<0.1 and tapeSpeeds[i]>-0.1 then
-          tapeSpeeds[i]=0.0
+        if params:get(tSpeeds[i])+delta/10<0.1 and params:get(tSpeeds[i])+delta/10>-0.1 then
+          params:set(tSpeeds[i],0.0)
+        else
+          params:delta(tSpeeds[i],delta/10)
         end
-        softcut.rate(i,tapeSpeeds[i])
       end
     end
   end
 end
 
 
--- MIDI INPUT
-function connect()
-  midi_signal_in = midi.connect(1)
-  midi_signal_in.event = on_midi_event
-end
-
-function on_midi_event(data)
-  msg = midi.to_msg(data)
-  play(msg)
-end
-
-function play(msg)
-  if msg.type == "cc" and msg.ch==midiCh then
-    if msg.cc == ccTape then
-      switchTape(round(util.linlin(0,127,1,4,msg.val)))
-    elseif msg.cc == ccLvl then
-      overStr = round(util.linlin(0,127,0,10,msg.val))
-      if state==1 then
-        softcut.pre_level(tape,((overStr-10.0)/10.0)*-1) -- turn pre_level down to overdub
-        softcut.rec_level(tape,overStr/10.0) -- turn rec_level up
-      end
-    elseif msg.cc == ccRec then
-      if msg.val >= 64 then
-        del=0
-        state=1
-        recTape(tape,state)
-      else
-        state=0
-        recTape(tape,state)
-      end
-    elseif msg.cc == ccDel then
-      if msg.val >= 64 then
-        state=0
-        del=1
-        recTape(tape,state)
-      else
-        del=0
-        recTape(tape,state)
-      end
-    elseif msg.cc == ccFade then
-      fadeTime = round(util.linlin(0,127,0,5,msg.val))
-      for i=1,4 do
-        softcut.fade_time(i,fadeTime)
-      end
-    elseif msg.cc == ccMon then
-      mon = round(util.linlin(0,127,0,10,msg.val))/10
-      audio.level_monitor(mon)
-      audio.level_cut((mon-1)*-1)
-    elseif msg.cc == ccRnd then
-      rndState=round(util.linlin(0,127,0,3,msg.val))
-    elseif msg.cc == ccClear then
-      if msg.val >= 64 then
-        if tape==1 then  
-          softcut.buffer_clear_region_channel(1,0,20)
-        elseif tape==2 then
-          softcut.buffer_clear_region_channel(1,20,20)
-        elseif tape==3 then
-          softcut.buffer_clear_region_channel(1,40,20)
-        elseif tape==4 then
-          softcut.buffer_clear_region_channel(1,60,20)
-        end
-        for i=1,50 do -- set all tape loop strip line colors to 0=black
-          strip[tape][i]=0
-        end
-      end
-    else
-      for i=1,4 do
-        if msg.cc==ccSpeeds[i] then
-          tapeSpeeds[i] = round(util.linlin(0,127,-40,40,msg.val))/10
-          softcut.rate(i,tapeSpeeds[i])
-        end
-      end
-    end
-  end
-end
 
 
 -- POLL TAPE LOOP POSITIONS
 function update_positions(v,p) -- v = voice, p = position
   headPos[v] = p - posOffset[v]
   
-  if tape==v then
+  if params:get("tape")==v then
     
-  if state==1 then -- if RECording
-      color = util.clamp(overStr+2,0,12) -- set corrent positions color between 2-12
-      strip[tape][round(headPos[v]/0.4+1)] = color -- write color into array
-    end
-    
-    if del==1 then -- id DELeting
-      strip[tape][round(headPos[v]/0.4+1)] = 0 -- write black to array
+    if params:get("rec")==1 then -- if RECording
+      color = util.clamp(params:get("lvl")+2,0,12) -- set corrent positions color between 2-12
+      strip[v][round(headPos[v]/0.4+1)] = color -- write color into array
     end
     
-    if rndState==0 then -- Random rec/del off
-      --do nothing
-    elseif rndState==1 then -- random rec on
-      rndRec()
-    elseif rndState==2 then -- random del on
-      rndDel()
-    elseif rndState==3 then -- both random rec and del on
-      local x = math.random(0,10) 
-      if x<5 then -- 50/50 chance for REC or DEL switch
-        rndRec()
-      else
-        rndDel()
-      end
+    if params:get("rec")==2 then -- id DELeting
+      strip[v][round(headPos[v]/0.4+1)] = 0 -- write black to array
     end
-  end
-  --redraw()
-end
-
-
--- SWITCH TAPE
-function switchTape(t)
-  if del==1 then
-    del=0
-    recTape(tape,0)
-    del=1
-  else
-    recTape(tape,0) --turn off previous recording
-  end 
-  tape = t
-  recTape(tape,state)
-end
-
-
--- RECORD + DELETE FUNCTION
-function recTape(t,s) -- t=tape, s=state
-  if del==1 then -- if DEL is active
-    softcut.level_input_cut(1,t,0.0) -- turn external input volume to softcut down to 0
-    softcut.level_input_cut(2,t,0.0)
-    softcut.pre_level(t,0.0) -- turn overdub preserve to 0
-    softcut.rec_level(t,1.0) -- record silence to softcut
-
-  else -- if DEL is inactive
-    softcut.level_input_cut(1,t,1.0) -- turn external input volume to softcut up to 1
-    softcut.level_input_cut(2,t,1.0)
-    if s==1 then -- if state == 1 i.e. REC is active
-      softcut.pre_level(t,((overStr-10.0)/10.0)*-1) -- set overdub preserve to inverse of "lvl" value 
-    else -- if REC is inactive, so it's just playing back the tapes
-      softcut.pre_level(t,1.0) -- set overdub preserve to 1, to keep audio on tape indefinitely
+    
+    if params:get("rnd")~=0 then
+      rndRec(params:get("rnd"))
     end
-    softcut.rec_level(t,s*(overStr/10.0)) -- set record level according to "lvl" value
   end
 end
 
 
--- RANDOM RECORDING FEATURE
-function rndRec()
-  if math.random(0,10)<=rndProb then
-    if state==1 then -- if REC on then switch off 
-      state = 0
-      recTape(tape,0)
-    else -- if REC off then switch DEL off and REC on
-      del=0
-      recTape(tape,0)
-      state = 1
-      overStr = math.random(1,10)
-      softcut.pre_level(tape,((overStr-10.0)/10.0)*-1)
-      softcut.rec_level(tape,overStr/10.0)
-      switchTape(math.random(1,4))
-      --recTape(tape,state)
-    end
-  end      
-end
-
-
--- RANDOM DELETE FEATURE
-function rndDel()
-  if math.random(0,10)<=rndProb then
-    if del==0 then
-      del=0
-      state=0
-      recTape(tape,state)
-      del=1
-      tape = math.random(1,4)
-      recTape(tape,state)
-    else
-      recTape(tape,0)
-      del=0
-      recTape(tape,state)
-    end
-  end
-end
 
 
 -- DRAW THE SCREEN CONTENTS
@@ -410,12 +362,12 @@ function redraw()
   -- draw tape strip rectangles
   
   for i=0,3 do
-    if tape==i+1 then
+    if params:get("tape")==i+1 then
       screen.level(15)
       screen.rect(i*32+1,1,29,51)
       screen.stroke()
     else
-      screen.level(5)
+      screen.level(1)
       screen.rect(i*32+1,1,29,51)
       screen.stroke()
     end
@@ -434,17 +386,17 @@ function redraw()
   
   -- draw moving playhead lines
   for i=1,4 do
-    if tape==i then
+    if params:get("tape")==i then
       screen.level(15)
       screen.move((i-1)*32+2,headPos[i]/0.4+2)
       screen.line((i-1)*32+28,headPos[i]/0.4+2)
       screen.stroke()
     else
-      screen.level(5)
+      screen.level(3)
       screen.move((i-1)*32+2,headPos[i]/0.4+2)
-      screen.line((i-1)*32+4,headPos[i]/0.4+2)
+      screen.line((i-1)*32+5,headPos[i]/0.4+2)
       screen.stroke()
-      screen.move((i-1)*32+26,headPos[i]/0.4+2)
+      screen.move((i-1)*32+25,headPos[i]/0.4+2)
       screen.line((i-1)*32+28,headPos[i]/0.4+2)
       screen.stroke()
     end
@@ -455,47 +407,47 @@ function redraw()
   screen.level(15)
   if k1hold==1 then
     screen.move(0,60)
-    if rndState==0 then
+    if params:get("rnd")==0 then
       screen.text("rOFF")
-    elseif rndState==1 then
+    elseif params:get("rnd")==1 then
       screen.text("rREC")
-    elseif rndState==2 then
+    elseif params:get("rnd")==2 then
       screen.text("rDEL")
-    elseif rndState==3 then
+    elseif params:get("rnd")==3 then
       screen.text("rALL")
     end
     
     screen.move(25,60)
     screen.text("clear")
     screen.move(65,60)
-    screen.text("fade "..fadeTime)
+    screen.text("fade "..params:get("fade"))
     screen.move(99,60)
-    screen.text("mon "..round(mon*20))
+    screen.text("mon "..round(params:get("mon")*20))
   else
     screen.move(0,60)
-    if state==0 then
-      screen.text("rec")
-    else
+    if params:get("rec")==1 then
       screen.text("REC!")
+    else
+      screen.text("rec")
     end
     screen.move(25,60)
-    if del==0 then
-      screen.text("del")
-    else
+    if params:get("rec")==2 then
       screen.text("DEL!")
+    else
+      screen.text("del")
     end
     screen.move(70,60)
-    screen.text("lvl "..overStr)
+    screen.text("lvl "..params:get("lvl"))
     screen.move(102,60)
-    screen.text("t"..tape)
---    screen.move(108,60)
---    screen.text("s")
+    screen.text("t"..params:get("tape"))
     screen.move(128,60)
-    screen.text_right(tapeSpeeds[tape])
+    screen.text_right(params:get(tSpeeds[params:get("tape")]))
   end
 
   screen.update()
 end
+
+
 
 
 -- timer to update the screen at 10 fps
@@ -505,6 +457,7 @@ re.event = function()
   redraw()
 end
 re:start()
+
 
 
 

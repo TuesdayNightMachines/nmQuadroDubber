@@ -1,5 +1,5 @@
 nmQuadroDubber
-1.0.6 @NightMachines
+1.1.0 @NightMachines
 https://llllllll.co/t/nmquadrodubber/
 
 There are four 20-second “tape loops”, represented by four vertical columns, stereo-panned from left to right.
@@ -24,4 +24,4 @@ Holding K1 and turning E2 (fade) adjusts Softcut’s fade parameter, inserting a
 
 Holding K1 and turning E3 (mon) blends between monitor and Softcut audio signals, letting you hear the external audio feed on top of the tape loops.
 
-MIDI CC# may be configured at the top of the script.
+Parameters may be adjust and mapped to external controllers via the PARAMETERS menu entries.

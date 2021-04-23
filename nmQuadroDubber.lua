@@ -1,5 +1,5 @@
 -- nmQuadroDubber
--- 1.1.0 @NightMachines
+-- 1.1.1 @NightMachines
 -- llllllll.co/t/nmquadrodubber/
 --
 -- Overdub external audio
@@ -247,7 +247,7 @@ function fade(x)
 end
 
 function pan(t,p)
-  softcut.pan(t,params:get("pan"))
+  softcut.pan(t,p)
 end
 
 

@@ -1,5 +1,5 @@
 -- nmQuadroDubber
--- 1.1.1 @NightMachines
+-- 1.1.2 @NightMachines
 -- llllllll.co/t/nmquadrodubber/
 --
 -- Overdub external audio
@@ -18,8 +18,8 @@
 --     monitor mix
 
 
--- norns.script.load("code/nmQuadroDubber/nmQuadroDubber.lua")
-
+  -- norns.script.load("code/nmQuadroDubber/nmQuadroDubber.lua")
+local version = "1.1.2"
 --adjust encoder settigns to your liking
 norns.enc.sens(0,2)
 norns.enc.accel(0,false)
@@ -50,31 +50,46 @@ function init()
   for id,device in pairs(midi.vports) do
     devices[id] = device.name
   end
-  params:add_group("nmQuadroDubber",23)
+  params:add_group("nmQuadroDubber",24)
   params:add{type = "option", id = "midi_input", name = "Midi Input", options = devices, default = 1, action=set_midi_input}
+  
   params:add_separator()
   params:add{type = "number", id = "tape", name = "Tape Loop #", min = 1, max = 4, default = 1, wrap = false, action=function(x) switchTape(x) end}
   params:add{type = "number", id = "rec", name = "OFF/REC/DEL", min = 0, max = 2, default = 0, wrap = false, action=function(x) recTape(params:get("tape"),x) end} -- 0=off 1=rec 2=del
   params:add{type = "number", id = "lvl", name = "Overdub Level", min = 0, max = 10, default = 10, action=function(x) lvl(x) end}
-  params:add{type = "number", id = "mon", name = "Input Monitor", min = 0.0, max = 1.0, default = 0.0, action=function(x) mon(x) end}
+  params:add_control("mon","Input Monitor Level", controlspec.new(0,1,"lin",0.1,0.0,"",0.1,false))
+  params:set_action("mon", function(x) mon(x) end)
+  params:add_control("scLvl","Softcut Level", controlspec.new(0,1,"lin",0.1,0.0,"",0.1,false))
+  params:set_action("scLvl", function(x) scLvl(x) end)
   params:add{type = "number", id = "fade", name = "Fade", min = 0, max = 5, default = 0, action=function(x) fade(x) end}
+  
   params:add_separator()
   params:add{type = "number", id = "rnd", name = "rOFF/rREC/rDEL/rALL", min = 0, max = 3, default = 0, wrap = false, action=function(x) rndRecCheck() end}
   params:add{type = "number", id = "prob", name = "rProbability", min = 0, max = 10, default = 5}
+  
   params:add_separator()
   params:add{type = "option", id = "clear", name = "Clear Current Loop", options = actions, default = 1, action=function(x) clear(x,params:get("tape")) end}
   params:add{type = "option", id = "clearall", name = "Clear All Loops", options = actions, default = 1, action=function(x) clear(x,5) end}
+  
   params:add_separator()
-  params:add{type = "number", id = "speed1", name = "Loop #1 Speed", min = -8.0, max = 8.0, default = 1.0, action=function(x)       softcut.rate(1,x) end}
-  params:add{type = "number", id = "speed2", name = "Loop #2 Speed", min = -8.0, max = 8.0, default = 1.0, action=function(x)       softcut.rate(2,x) end}
-  params:add{type = "number", id = "speed3", name = "Loop #3 Speed", min = -8.0, max = 8.0, default = 1.0, action=function(x)       softcut.rate(3,x) end}
-  params:add{type = "number", id = "speed4", name = "Loop #4 Speed", min = -8.0, max = 8.0, default = 1.0, action=function(x)       softcut.rate(4,x) end}
+  params:add_control("speed1", "Loop #1 Speed", controlspec.new(-8,8,"lin",0.1,1.0,"",0.00625,false))
+  params:set_action("speed1", function(x) softcut.rate(1,x) end)
+  params:add_control("speed2", "Loop #2 Speed", controlspec.new(-8,8,"lin",0.1,1.0,"",0.00625,false))
+  params:set_action("speed2", function(x) softcut.rate(2,x) end)
+  params:add_control("speed3", "Loop #3 Speed", controlspec.new(-8,8,"lin",0.1,1.0,"",0.00625,false))
+  params:set_action("speed3", function(x) softcut.rate(3,x) end)
+  params:add_control("speed4", "Loop #4 Speed", controlspec.new(-8,8,"lin",0.1,1.0,"",0.00625,false))
+  params:set_action("speed4", function(x) softcut.rate(4,x) end)
+  
   params:add_separator()
-  params:add{type = "number", id = "pan1", name = "Loop #1 Pan", min = -1.0, max = 1.0, default = 1.0, action=function(x)       pan(1,x) end}
-  params:add{type = "number", id = "pan2", name = "Loop #2 Pan", min = -1.0, max = 1.0, default = 0.3, action=function(x)       pan(2,x) end}
-  params:add{type = "number", id = "pan3", name = "Loop #3 Pan", min = -1.0, max = 1.0, default = -0.3, action=function(x)       pan(3,x) end}
-  params:add{type = "number", id = "pan4", name = "Loop #4 Pan", min = -1.0, max = 1.0, default = -1.0, action=function(x)       pan(4,x) end}
-  --params:add{type = "number", id = "del", name = "del", min = 0, max = 1, default = 0, wrap = true, action=function(x) del(x) end}  
+  params:add_control("pan1", "Loop #1 Pan", controlspec.new(1.0,-1.0,"lin",0.1,-1.0,"",0.05,false))
+  params:set_action("pan1", function(x) panning(1,x) end)
+  params:add_control("pan2", "Loop #2 Pan", controlspec.new(1.0,-1.0,"lin",0.1,-0.3,"",0.05,false))
+  params:set_action("pan2", function(x) panning(2,x) end)
+  params:add_control("pan3", "Loop #3 Pan", controlspec.new(1.0,-1.0,"lin",0.1,0.3,"",0.05,false))
+  params:set_action("pan3", function(x) panning(3,x) end)
+  params:add_control("pan4", "Loop #4 Pan", controlspec.new(1.0,-1.0,"lin",0.1,1.0,"",0.05,false))
+  params:set_action("pan4", function(x) panning(4,x) end)
   
   softcut.buffer_clear()
   softcut.buffer_clear_region_channel(1,0,80) -- clear 80 seconds silence, probably not neccessary
@@ -104,7 +119,7 @@ function init()
   for i=1,4 do -- more setup for the 4 voices
     softcut.enable(i,1)
     softcut.buffer(i,1)
-    softcut.level(i,0.4)
+    softcut.level(i,0.6)
     softcut.loop(i,1)
     softcut.play(i,1)
     softcut.rate(i,1.0)
@@ -121,6 +136,7 @@ function init()
   softcut.event_phase(update_positions)
   softcut.poll_start_phase()
   
+  print(version)
 end
 
 
@@ -246,44 +262,50 @@ function fade(x)
   end
 end
 
-function pan(t,p)
+function panning(t,p)
   softcut.pan(t,p)
+end
+
+function scLvl(x)
+  for i=1,4 do
+    softcut.level(i,x)
+  end
 end
 
 
 
 -- BUTTONS
 function key(id,st)
-  if id==2 and st==1 then -- K2
-    if k1hold==1 then -- if K1 is held, K2 switches through random modes
-      if params:get("rnd")==3 then
-        params:set("rnd",0)
-      else
-        params:delta("rnd",1)
-      end
-    else -- if K1 is not held, de/activate RECording
-      if params:get("rec")==1 then
-        params:set("rec",0)
-      else
-        params:set("rec",1)
-      end
-    end
-  elseif id==1 then -- K1
+  if id==1 then -- K1
     if st==1 then
       k1hold=1 -- while K1 is held down, other functionality is available
     else
       k1hold=0
     end
+  elseif id==2 and st==1 then -- K2
+    if k1hold==0 then -- if K1 is not held, de/activate RECording
+      if params:get("rec")==1 then
+        params:set("rec",0)
+      else
+        params:set("rec",1)
+      end
+    else -- if K1 is held, K2 switches through random modes
+      if params:get("rnd")==3 then
+        params:set("rnd",0)
+      else
+        params:delta("rnd",1)
+      end
+    end
   elseif id==3 and st==1 then -- K3
-    if k1hold==1 then -- if K1 is held, clear current tape loop strip
-      params:set("clear",2)
-      params:set("clear",1)
-    else -- if K1 is not held, de/activate deletion
+    if k1hold==0 then -- if K1 is not held, de/activate deletion
       if params:get("rec")==2 then
         params:set("rec",0)
       else
         params:set("rec",2)
       end
+    else -- if K1 is held, clear current tape loop strip
+      params:set("clear",2)
+      params:set("clear",1)
     end
   end
 end
@@ -293,11 +315,13 @@ end
 
 -- ENCODERS
 function enc(id,delta)
-  if id==3 then -- E3
-    if k1hold==1 then -- fade between input monitor and softcut output
-      params:delta("mon",delta/20)
-    else -- switch tape loop
-      params:delta("tape",delta)
+  if id==1 then -- E1 changes softcut tape speed (rate) between -4.0 and 4.0
+    if k1hold==0 then
+        params:delta(tSpeeds[params:get("tape")],delta)
+    else
+      for i=1,4 do
+        params:delta(tSpeeds[i],delta)
+      end
     end
     
   elseif id==2 then -- E2
@@ -307,22 +331,18 @@ function enc(id,delta)
       params:delta("fade",delta)
     end
     
-  elseif id==1 then -- E1 changes softcut tape speed (rate) between -4.0 and 4.0
-    if k1hold==0 then
-      if params:get(tSpeeds[params:get("tape")])+delta/10<0.1 and params:get(tSpeeds[params:get("tape")])+delta/10>-0.1 then
-        params:set(tSpeeds[params:get("tape")],0.0)
+  elseif id==3 then -- E3
+    if k1hold==0 then -- switch tape loop
+      if params:get("tape")==1 and delta<0 then
+        params:set("tape",4)
+      elseif params:get("tape")==4 and delta>0 then
+        params:set("tape",1)
       else
-        params:delta(tSpeeds[params:get("tape")],delta/10)
+        params:delta("tape",delta)
       end
-
-    else
-      for i=1,4 do
-        if params:get(tSpeeds[i])+delta/10<0.1 and params:get(tSpeeds[i])+delta/10>-0.1 then
-          params:set(tSpeeds[i],0.0)
-        else
-          params:delta(tSpeeds[i],delta/10)
-        end
-      end
+      
+    else -- fade between input monitor and softcut output
+      params:delta("mon",delta)
     end
   end
 end
@@ -338,11 +358,11 @@ function update_positions(v,p) -- v = voice, p = position
     
     if params:get("rec")==1 then -- if RECording
       color = util.clamp(params:get("lvl")+2,0,12) -- set corrent positions color between 2-12
-      strip[v][round(headPos[v]/0.4+1)] = color -- write color into array
+      strip[params:get("tape")][round(headPos[params:get("tape")]/0.4+1)] = color -- write color into array
     end
     
     if params:get("rec")==2 then -- id DELeting
-      strip[v][round(headPos[v]/0.4+1)] = 0 -- write black to array
+      strip[params:get("tape")][round(headPos[params:get("tape")]/0.4+1)] = 0 -- write black to array
     end
     
     if params:get("rnd")~=0 then
@@ -422,7 +442,7 @@ function redraw()
     screen.move(65,60)
     screen.text("fade "..params:get("fade"))
     screen.move(99,60)
-    screen.text("mon "..round(params:get("mon")*20))
+    screen.text("mon "..round(params:get("mon")*10))
   else
     screen.move(0,60)
     if params:get("rec")==1 then

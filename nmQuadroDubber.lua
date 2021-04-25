@@ -21,8 +21,8 @@
   -- norns.script.load("code/nmQuadroDubber/nmQuadroDubber.lua")
 local version = "1.1.2"
 --adjust encoder settigns to your liking
-norns.enc.sens(0,2)
-norns.enc.accel(0,false)
+--norns.enc.sens(0,2)
+--norns.enc.accel(0,false)
 
 
 -- LET'S GO!

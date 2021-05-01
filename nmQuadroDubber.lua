@@ -1,5 +1,5 @@
 -- nmQuadroDubber
--- 1.1.2 @NightMachines
+-- 1.1.3 @NightMachines
 -- llllllll.co/t/nmquadrodubber/
 --
 -- Overdub external audio
@@ -82,13 +82,13 @@ function init()
   params:set_action("speed4", function(x) softcut.rate(4,x) end)
   
   params:add_separator()
-  params:add_control("pan1", "Loop #1 Pan", controlspec.new(1.0,-1.0,"lin",0.1,-1.0,"",0.05,false))
+  params:add_control("pan1", "Loop #1 Pan", controlspec.new(-1.0,1.0,"lin",0.1,-1.0,"",0.05,false))
   params:set_action("pan1", function(x) panning(1,x) end)
-  params:add_control("pan2", "Loop #2 Pan", controlspec.new(1.0,-1.0,"lin",0.1,-0.3,"",0.05,false))
+  params:add_control("pan2", "Loop #2 Pan", controlspec.new(-1.0,1.0,"lin",0.1,-0.3,"",0.05,false))
   params:set_action("pan2", function(x) panning(2,x) end)
-  params:add_control("pan3", "Loop #3 Pan", controlspec.new(1.0,-1.0,"lin",0.1,0.3,"",0.05,false))
+  params:add_control("pan3", "Loop #3 Pan", controlspec.new(-1.0,1.0,"lin",0.1,0.3,"",0.05,false))
   params:set_action("pan3", function(x) panning(3,x) end)
-  params:add_control("pan4", "Loop #4 Pan", controlspec.new(1.0,-1.0,"lin",0.1,1.0,"",0.05,false))
+  params:add_control("pan4", "Loop #4 Pan", controlspec.new(-1.0,1.0,"lin",0.1,1.0,"",0.05,false))
   params:set_action("pan4", function(x) panning(4,x) end)
   
   softcut.buffer_clear()
@@ -114,7 +114,6 @@ function init()
   softcut.loop_end(4,80)
   softcut.position(4,60)
   softcut.pan(4,params:get("pan4"))  -- pan hard right
-  
   
   for i=1,4 do -- more setup for the 4 voices
     softcut.enable(i,1)
